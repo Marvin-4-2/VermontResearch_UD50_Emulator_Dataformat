@@ -94,3 +94,8 @@ docs/SEMS_ASCII_TABLE.jpeg  SEMS ASCII code table (even parity), from the system
 tools/                    Python tools
 results/                  per-sector tables and string lists (gzip)
 ```
+
+## License
+
+The tools and documentation are released under the [MIT License](LICENSE). The SEMS ASCII table and the software
+contents in the result files belong to their respective owners.
