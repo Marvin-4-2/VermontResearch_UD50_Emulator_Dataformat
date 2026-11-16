@@ -1,0 +1,7 @@
+# disk images and binary payloads are not part of the repository
+*.img
+*.hda
+*.bin
+*.7z
+__pycache__/
+*.pyc
