@@ -1,4 +1,5 @@
-"""Extract the host records from a NEW-format UD50 backup image (S2_*.img, K2_MHD.hda).
+"""Extract the host records from a K2-format backup image (K2 emulator)
+of a UD50 drive (S2_*.img, K2_MHD.hda).
 
 New format (see docs/FORMAT.md, "New format"):
   * file header at 0, table from 0x200; records follow, each preceded by the

@@ -1,4 +1,4 @@
-"""Build a NEW-format UD50 backup image (64 MiB) from host records.
+"""Build a K2-format backup image (K2 emulator, 64 MiB) of a UD50 drive from host records.
 
 Layout (derived from K2_MHD.hda, S2_FHD_070208.img, S2_MHD_irgendwas.img; see
 docs/FORMAT.md, "New format"):

@@ -1,4 +1,4 @@
-"""CRC-verified extraction of UD50 (old format) backup images.
+"""CRC-verified extraction of old-format backup images (older emulator) of a UD50 drive.
 
 Unlike ud50_extract.py this does not rely on the order of the blocks in the image:
 every block is located by its self address, the bit offset s (0..15) is chosen so

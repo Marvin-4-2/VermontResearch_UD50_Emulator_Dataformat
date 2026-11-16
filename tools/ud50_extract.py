@@ -1,4 +1,5 @@
-"""Extract the 256-byte payload of every 288-byte block of a UD50 backup image.
+"""Extract the 256-byte payload of every 288-byte block of an old-format backup image
+(older emulator) of a UD50 drive.
 
 Block layout (byte offsets from block start, see docs/FORMAT.md):
   +12      16-bit LE self address: (offset/2) & 0xFFFF

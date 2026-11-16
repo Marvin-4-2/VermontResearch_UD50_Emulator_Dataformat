@@ -1,12 +1,14 @@
-# Vermont Research UD50 – backup data formats
+# Vermont Research UD50 emulators – backup data formats
 
-This document describes the two backup formats of the Vermont Research UD50 solid-state disk emulator.
-The UD50 emulates a 50 MB disk drive for a SEMS computer (France, 1979). The emulator keeps the disk in RAM and
-saves/restores it to an internal SCSI backup medium (SyQuest, MO, …). Two emulator generations exist, and they write
-**different backup formats**:
+**UD50** is a 50 MB disk drive of a SEMS computer (France, 1979). Vermont Research built solid-state emulators
+that replace this drive. An emulator keeps the drive contents in RAM and saves/restores them to an internal SCSI
+backup medium (SyQuest, MO, …). This document describes the backup formats of the two emulator versions:
 
-* **old format** – e.g. `DUPLIC_4_3_K1_FHD_SYQUEST.img`, `Duplic_4_3_K1_MO_FHD.img`, `K1_MHD_SYQUEST.img`
-* **new format** – e.g. `S2_FHD_070208.img`, `S2_MHD_irgendwas.img`, the first 64 MiB of `K2_MHD.hda`
+* **old format** – written by the **older emulator** (model name unknown), e.g. `DUPLIC_4_3_K1_FHD_SYQUEST.img`,
+  `Duplic_4_3_K1_MO_FHD.img`, `K1_MHD_SYQUEST.img`
+* **K2 format** – written by the newer **K2** emulator, e.g. `S2_FHD_070208.img`, `S2_MHD_irgendwas.img`, the first
+  64 MiB of `K2_MHD.hda`. Its gap marker is the ASCII string `[K2]`. Sections and tools below that say "new format"
+  mean the K2 format.
 
 Everything below was reverse-engineered from these images. No emulator documentation was available. Every claim
 is backed by the CRC check and by byte-exact rebuild tests. The key result: **both formats carry exactly the
@@ -69,7 +71,7 @@ LSB first. The stored CRC follows little-endian.
 bit 7** (see `SEMS_ASCII_TABLE.jpeg`, e.g. `A` = 41, `C` = C3, `S` = 53, space = A0). Unused sectors in DUPLIC contain
 the filler word `0xE38E`.
 
-## 3. Old backup format
+## 3. Old backup format (older emulator)
 
 ### Overall layout
 
@@ -99,9 +101,9 @@ Block layout (byte offsets from block start):
 The bit shift `s` is found per block by requiring the sync nibble 8 **and** a valid CRC at offset +30 bytes + `s` bits.
 The data then start at bit `(block + 30) * 8 + s + 36`.
 
-## 4. New backup format
+## 4. New backup format (K2 emulator)
 
-The new format is a 64 MiB file.
+The K2 format is a 64 MiB file.
 
 | range | content |
 |---|---|
@@ -202,6 +204,12 @@ python tools/ud50new_build.py S2_FHD_070208.img DUPLIC_4_3_K1_FHD_new.img \
 * **Round trip:** extracting the generated image again gives 194 880 of 194 880 sectors with a valid CRC.
   194 879 of them are bit-identical with the payload extracted from the old image; the only difference is the
   generated sector 0.
+
+### K2 format → old format
+
+Not implemented yet. The host records can be extracted from K2 images with `ud50new_extract.py`. A builder for
+the old block layout (self addresses, per-block bit shift, extra word before sector 0, section fill, test pattern
+after 0x3700000) is still missing. Whether the older emulator accepts the shift 0 everywhere is unknown.
 
 ## 8. History: a misread of the new format
 
