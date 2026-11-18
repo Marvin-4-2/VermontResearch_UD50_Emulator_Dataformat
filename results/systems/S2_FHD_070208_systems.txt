@@ -1,0 +1,12 @@
+source: S2_FHD_070208_payload.bin
+label 'SRBFCC1.'  validation 89ab  structure 0002  RAPD start 00e6  max system+1 8
+
+k  name    mem   launch  disk adr  start  end    sectors  length(words)  file
+0  BOSDFH  0354  448a    0005      0005   00fe     250     31916         0_BOSDFH.bin
+1  RTSDFH  0140  56b3    01f4      01f4   03f0     509     65089         1_RTSDFH.bin
+2  RTSDFH  0140  4a19    03f1      03f1   05e4     154     19687         2_RTSDFH.bin
+3  (empty)
+4  (empty)
+5  (empty)
+6  BDFHWI  1255  44b5    0640      0640   071b     220     28059         6_BDFHWI.bin
+7  FORMAF  1400  1620    012c      012c   013f      20      2556         7_FORMAF.bin

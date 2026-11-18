@@ -7,7 +7,7 @@ backup medium (SyQuest, MO, …). This document describes the backup formats of 
 * **old format** – written by the **older emulator** (model name unknown), e.g. `DUPLIC_4_3_K1_FHD_SYQUEST.img`,
   `Duplic_4_3_K1_MO_FHD.img`, `K1_MHD_SYQUEST.img`
 * **K2 format** – written by the newer **K2** emulator, e.g. `S2_FHD_070208.img`, `S2_MHD_irgendwas.img`, the first
-  64 MiB of `K2_MHD.hda`. Its gap marker is the ASCII string `[K2]`. Sections and tools below that say "new format"
+  64 MiB of `K2_MHD.hda` and of `HD00_imaged.hda`. Its gap marker is the ASCII string `[K2]`. Sections and tools below that say "new format"
   mean the K2 format.
 
 Everything below was reverse-engineered from these images. No emulator documentation was available. Every claim
@@ -125,6 +125,18 @@ The K2 format is a 64 MiB file.
 So the host bit stream is **identical** in old and new format. The tools rebuild all three new reference images
 **byte for byte** from their extracted records, so the layout above is complete.
 
+**`[K2]` is not required.** In `HD00_imaged.hda`, a K2 backup with DUPLIC on it that the K2 emulator reads back,
+all gaps and the area after the last record are zeros. Nevertheless all 194 880 records sit exactly at `E_i` and have
+a valid CRC; there the nibble is at bit 239–242. `tools/ud50k2_slot_extract.py` extracts such images by slot position.
+
+**The backup is a RAM image.** The maintenance interface of the K2 emulator can dump its RAM
+(`AAAAAAAA = WWWWWWWW WWWWWWWW WWWWWWWW WWWWWWWW`, the address counts 32-bit words). Written as little-endian
+32-bit words, the dump is byte-identical to `HD00_imaged.hda` from offset 0xA00 (checked for 70 400 bytes). So the K2
+backup is a **1:1 copy of the emulator RAM preceded by the 0xA00-byte file header**: RAM word address `A` ↔ file
+offset `0xA00 + 4·A`. The emulator holds the tracks in RAM as bit streams with gaps, and the `[K2]` gaps seen in
+other images are presumably the RAM's initial fill. The maintenance interface can also write RAM, which would be
+a way to load an image without a SCSI backup device (not tried yet).
+
 `K2_MHD.hda` is a dump of a larger backup medium. Only its first 64 MiB were written by the emulator; the rest is
 older data on the medium (95.8 % zeros, test patterns such as `UUUU…`, `KKKK…` and ASCII sequences). It contains
 neither `[K2]` nor any old-format blocks.
@@ -176,6 +188,7 @@ zeros, the **unchanged host bit stream** (nibble + 2096 bits) at bit 245 (`--nib
 | K2_MHD.hda (first 64 MiB) | new | 194 880 | – | 0 |
 | S2_FHD_070208.img | new | 194 880 | – | 0 |
 | S2_MHD_irgendwas.img | new | 194 880 | – | 0 |
+| HD00_imaged.hda (first 64 MiB) | new, zero gaps | 194 880 | – | 0 |
 
 * **DUPLIC SYQUEST vs. MO:** the payloads are bit-identical. Each copy has exactly one backup flaw, and the other copy
   covers it:
@@ -186,6 +199,15 @@ zeros, the **unchanged host bit stream** (nibble + 2096 bits) at bit 245 (`--nib
 * **K1:** the first track of head 0 is overwritten at the start of the file. Heads 18 and 19 end at cylinder 370 in this
   backup.
 * **New-format images:** all three rebuild byte-identically with `ud50new_build.py --new … --keep-timing`.
+* **HD00 (K2, DUPLIC):** 4 620 of the 4 623 data sectors of the old DUPLIC backup are bit-identical here. The other
+  three (head 0/cyl 0, physical sectors 1, 6, 15) differ in 1–3 bytes, probably state data. Every other sector holds a
+  fill pattern instead of `E38E`: below cylinder 200 each word is `cyl·0x40 + logical sector` (the sector's own logical
+  address, see section 8), above it other test patterns. Head 0/cyl 0/sec 0, missing in both old backups, holds only
+  this pattern here, so it is not part of the program.
+  * Real content (sectors that are not constant) amounts to 4 234 sectors, 3 963 of them distinct (≈ 1 MB), all on
+    heads 0–1, cylinders 0–172. Besides DUPLIC this includes a test library: a command file (`FICHIER DE COMMANDE
+    POUR LANCEMENT DE TESTS`), several test kernels (`NOYAU DE TEST MEMOIRE`, `… INSTRUCTIONS`,
+    `… VERSION SOLAR 16-85`, …), bootstrap and monitor. The computer is a SEMS **SOLAR 16**.
 
 ## 7. DUPLIC conversion
 
@@ -200,7 +222,7 @@ python tools/ud50new_build.py S2_FHD_070208.img DUPLIC_4_3_K1_FHD_new.img \
 * Head 19/cyl 179/sec 5: the flipped header bit was corrected (`--fix-hdrbit`). The CRC is then valid, and the data are
   unchanged.
 * Head 0/cyl 0/sec 0 is missing in both old images. It was generated with zero data, correct header words and CRC.
-  K1, K2 and S2_MHD also hold only zeros in this sector.
+  K1, K2 and S2_MHD also hold only zeros in this sector, and in HD00 it holds only a fill pattern.
 * **Round trip:** extracting the generated image again gives 194 880 of 194 880 sectors with a valid CRC.
   194 879 of them are bit-identical with the payload extracted from the old image; the only difference is the
   generated sector 0.
@@ -211,7 +233,81 @@ Not implemented yet. The host records can be extracted from K2 images with `ud50
 the old block layout (self addresses, per-block bit shift, extra word before sector 0, section fill, test pattern
 after 0x3700000) is still missing. Whether the older emulator accepts the shift 0 everywhere is unknown.
 
-## 8. History: a misread of the new format
+## 8. SEMS disk file system (sectors 0–4)
+
+Source: SEMS documentation, chapter 12.11 "Utilisation des supports disques" (`Disk_geometry_1..3.jpeg`).
+
+**Sector numbering.** The documentation counts **logical** sectors: logical sector n is **physical sector n+1**
+(mod 24) on a track, so physical sector 0 is logical sector 23. Disk addresses count sectors **cylinder by
+cylinder across all 20 heads**:
+
+```
+disk address = cyl * 480 + head * 24 + logical sector
+```
+
+Sector 4 confirms this: "taille secteur" = 128 words and "taille cylindre" = 480 sectors (20 heads × 24). Note that the
+`*_payload.bin` files are ordered head by head. The cylinder-major order was checked at track boundaries: there, text
+and code continue in the cylinder-major successor 306 times and in the head-major one only 115 times.
+
+| logical sector | content |
+|---|---|
+| 0–2 | RAPD (bootstrap loader); sector 2 also holds the system table |
+| 3 | system information |
+| 4 | space table |
+
+**Sector 2:** word 0 RAPD start address, word 1 max. system number + 1, then for systems 0–7 four words each
+(words 2–33): memory address, start address, disk address, length in words. The RAPD program follows.
+
+**Sector 3:**
+
+| words | content |
+|---|---|
+| 0–7 | table of defective cylinders |
+| 8 | validation code |
+| 9–12 | label |
+| 13 | structure code |
+| 16+3k … 18+3k | file name of system k (k = 0–7) |
+| 64+2k / 65+2k | start / end disk address of system k |
+
+**Sector 4:**
+
+| words | content |
+|---|---|
+| 0–3 | label |
+| 4–6 | support code, sector size, cylinder size |
+| 7 / 8 | NBESP (number of spaces, high byte) / NBFMS |
+| 12+4k … 15+4k | space k (k = 0–27): indicator, LTAG, disk address, length |
+
+**Values in S2_FHD** (S2_MHD and K2_MHD are the same apart from names):
+* Defective-cylinder table `0190` = 400, so cylinders 400–405 are locked. This explains the 406 stored cylinders.
+* Validation code `89AB`, label `SRBFCC1`, structure code 2.
+* Support code 2, 128 words per sector, 480 sectors per cylinder, NBESP 6.
+* Spaces 2–5 have address/length 5/40, 47/260, 307/23 and 330/70, while spaces 0 and 1 are zero. Since the last one
+  ends exactly at 400, these values are apparently in cylinders; this is not confirmed.
+
+**Systems** (`tools/ud50_systems.py PAYLOAD OUT`; tables in `results/systems/`):
+
+| k | S2_FHD | S2_MHD / K2_MHD | memory | start | disk address | words |
+|---|---|---|---|---|---|---|
+| 0 | BOSDFH | BOSDMH | 0354 | 448A | 0x005–0x0FE | 31 916 |
+| 1 | RTSDFH | RTSDMH | 0140 | 56B3 | 0x1F4–0x3F0 | 65 089 |
+| 2 | RTSDFH | RTSDMH | 0140 | 4A19 | 0x3F1–0x5E4 | 19 687 |
+| 6 | BDFHWI | BOSDMH | 1255 / 106F | 44B5 / 44AE | 0x640–0x71B / 0x71F | 28 059 / 28 545 |
+| 7 | FORMAF | FORMAF | 1400 | 1620 | 0x12C–0x13F | 2 556 |
+
+Sectors 2 and 3 agree on all disk addresses. The contents fit the names:
+* BOS contains `** RECHNER S2 FHD **` and `BETRIEBSSYSTEME: BOSDFH V9.7 UND RTS…`.
+* RTS is the real-time system.
+* FORMAF is the formatter (`REPRISE SUR DEFAUT SECTEUR`, `PERIPH. BOOTSTRAPABLE (Y-N)`).
+
+FORMAF is identical in all three images, and BOSDFH and BOSDMH agree in 95 % of their bytes.
+
+**The DUPLIC disk does not use this structure.** In HD00, logical sectors 1 and 3 are unwritten (fill pattern), and
+logical sector 4 already contains DUPLIC text (`FICHIER BOOTSTRAP + MONITEUR`). It is a stand-alone bootable test
+disk, not a file-system volume, so it has no directory. Logical sector 2 has `0880` in word 0 and `00AC` (= 172) in
+word 1; 172 matches the last used cylinder.
+
+## 9. History: a misread of the new format
 
 At first I read the new format byte by byte, MSB first, instead of as 16-bit LE words. Text then looked *almost*
 right, but bits 5–7 seemed corrupted (`SYSTEME` → `S9STEME`, space → `@`), and the CRC failed. With the correct

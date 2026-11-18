@@ -11,9 +11,12 @@ This project compares and reverse-engineers both backup formats. It provides too
 drive contents from either format and convert one format into the other. The immediate goal is to bring software
 that exists only as an old-format backup (*DUPLIC*, a test program) onto K2 emulators.
 
-**Status:** both formats are fully decoded. Every sector is verified by its CRC. Conversion **old → K2** works, and the
-three K2 reference images can be rebuilt byte for byte. A converted DUPLIC image exists, but it has **not yet been
-tested on real hardware**. Conversion **K2 → old** is not implemented yet (see [Open issues](#open-issues)).
+**Status:** both formats are fully decoded. Every sector is verified by its CRC.
+* Conversion **old → K2** works, and the three K2 reference images can be rebuilt byte for byte.
+* A converted DUPLIC image exists, but it has **not yet been tested on real hardware**.
+* A genuine K2 backup with DUPLIC on it (`HD00_imaged.hda`) has since turned up, and the K2 emulator reads it back.
+  Its DUPLIC data are bit-identical with the old backup.
+* Conversion **K2 → old** is not implemented yet (see [Open issues](#open-issues)).
 
 ## Key findings
 
@@ -24,7 +27,11 @@ tested on real hardware**. Conversion **K2 → old** is not implemented yet (see
     varying bit shift.
   * **K2 format (K2 emulator):** fixed 324-byte slots separated by the gap pattern `[K2]`, the host stream stored as
     16-bit little-endian words read MSB-first.
-* Text on the SEMS is 7-bit ASCII with **even parity in bit 7**, and words are big-endian.
+* The K2 backup is a **1:1 copy of the emulator RAM** behind a 0xA00-byte header, as a RAM dump from the
+  maintenance interface shows. The `[K2]` gap marker is not required; some K2 backups have zero gaps.
+* Text on the SEMS (a **SOLAR 16**) is 7-bit ASCII with **even parity in bit 7**, and words are big-endian.
+* SEMS disk file system: logical sector n = physical sector n+1, and disk addresses run cylinder by cylinder
+  (480 sectors per cylinder). Sectors 2–4 list the systems (BOS, RTS, FORMAF, …), and `tools/ud50_systems.py` extracts them.
 
 The full description is in **[docs/FORMAT.md](docs/FORMAT.md)**.
 
@@ -37,7 +44,9 @@ The tools need Python 3 and numpy (`pip install -r requirements.txt`).
 | `tools/ud50_extract_crc.py IMAGE [OUT] [END] [CYLS] [HEADS]` | old format → `*_payload.bin` + `*_blocks.csv`; CRC-verified, sectors placed by header words (recommended) |
 | `tools/ud50_extract.py IMAGE [OUT] [END]` | first, order-based old-format extractor (kept for reference; misses sector 0 of heads 1–19) |
 | `tools/ud50new_extract.py IMAGE [OUT] [CYLS] [HEADS]` | K2 format → `*_payload.bin` + `*_records.csv` |
+| `tools/ud50k2_slot_extract.py IMAGE OUT_PREFIX` | K2 format by slot position, for images without `[K2]` gaps |
 | `tools/ud50new_build.py REF OUT.img --old IMG CSV [...]` | builds a K2-format image from old-format records; `--new IMG CSV --keep-timing` rebuilds a K2 image exactly |
+| `tools/ud50_systems.py PAYLOAD.bin OUT_DIR` | extracts the systems listed in sectors 2/3 of a SEMS system disk (BOS, RTS, …) |
 | `tools/ud50_strings.py PAYLOAD.bin [MIN_LEN] [OUT.txt]` | lists 7-bit/even-parity text strings with sector positions (sanity check) |
 
 For old-format images use `END = 0x3700000`.
@@ -63,8 +72,9 @@ python tools/ud50new_extract.py DUPLIC_4_3_K1_FHD_new.img out    # round-trip ch
 
 * `results/old_format/` – `*_blocks.csv.gz` (offset, bit shift, header words, CRC, status per sector) for
   the DUPLIC SYQUEST, DUPLIC MO and K1 images, plus string lists.
-* `results/new_format/` – K2 format: `*_records.csv.gz` and string lists for K2_MHD, S2_FHD and S2_MHD.
+* `results/new_format/` – K2 format: `*_records.csv.gz` and string lists for K2_MHD, S2_FHD, S2_MHD and HD00.
 * `results/conversion/` – record table of the converted DUPLIC image (K2 format).
+* `results/systems/` – system tables of S2_FHD, S2_MHD and K2_MHD. The system binaries themselves are not included.
 
 The DUPLIC string list was made with the first extractor, so its 20 sector-0 entries are placeholders.
 
@@ -76,6 +86,7 @@ The DUPLIC string list was made with the first extractor, so its 20 sector-0 ent
 | K2_MHD.hda (first 64 MiB) | K2 | 194 880 |
 | S2_FHD_070208.img | K2 | 194 880 |
 | S2_MHD_irgendwas.img | K2 | 194 880 |
+| HD00_imaged.hda (first 64 MiB) | K2, zero gaps | 194 880 (DUPLIC, read back by the K2 emulator) |
 | converted DUPLIC | K2 | 194 880 (round trip bit-identical except the generated sector 0) |
 
 ## Open issues
@@ -92,18 +103,21 @@ The DUPLIC string list was made with the first extractor, so its 20 sector-0 ent
   * Next steps: a BlueSCSI debug log, then a logic-analyzer comparison of a working and a failing drive.
 * The meaning of the upper 12 bits of header word 2 and the content of the 0xA00-byte file header of the K2
   format are not understood; both are copied verbatim.
-* Head 0/cyl 0/sec 0 of DUPLIC is missing in both old backups. It is generated with zero data.
+* Head 0/cyl 0/sec 0 of DUPLIC is missing in both old backups. It is generated with zero data; in HD00 it holds only
+  a fill pattern, so it is not part of the program.
+* Loading an image through the maintenance interface (it can write RAM) could bypass the SCSI problem; not tried yet.
 
 ## Files
 
 ```
 docs/FORMAT.md            format description
 docs/SEMS_ASCII_TABLE.jpeg  SEMS ASCII code table (even parity), from the system documentation
+docs/Disk_geometry_1..3.jpeg  SEMS documentation 12.11: use of disk sectors 0-4
 tools/                    Python tools
 results/                  per-sector tables and string lists (gzip)
 ```
 
 ## License
 
-The tools and documentation are released under the [MIT License](LICENSE). The SEMS ASCII table and the software
-contents in the result files belong to their respective owners.
+The tools and documentation are released under the [MIT License](LICENSE). The scanned SEMS documentation pages
+and the software contents in the result files belong to their respective owners.
