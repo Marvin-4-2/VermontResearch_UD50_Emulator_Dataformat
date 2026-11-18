@@ -30,8 +30,8 @@ that exists only as an old-format backup (*DUPLIC*, a test program) onto K2 emul
 * The K2 backup is a **1:1 copy of the emulator RAM** behind a 0xA00-byte header, as a RAM dump from the
   maintenance interface shows. The `[K2]` gap marker is not required; some K2 backups have zero gaps.
 * Text on the SEMS (a **SOLAR 16**) is 7-bit ASCII with **even parity in bit 7**, and words are big-endian.
-* SEMS disk file system: logical sector n = physical sector n+1, and disk addresses run cylinder by cylinder
-  (480 sectors per cylinder). Sectors 2–4 list the systems (BOS, RTS, FORMAF, …), and `tools/ud50_systems.py` extracts them.
+* What is stored *on* the disks (SEMS disk layout, file system, operating system) is documented in the separate,
+  currently private project **SEMS_SOLAR_16_65_Revival**, which aims at getting a real SOLAR 16-65 running again.
 
 The full description is in **[docs/FORMAT.md](docs/FORMAT.md)**.
 
@@ -45,9 +45,7 @@ The tools need Python 3 and numpy (`pip install -r requirements.txt`).
 | `tools/ud50_extract.py IMAGE [OUT] [END]` | first, order-based old-format extractor (kept for reference; misses sector 0 of heads 1–19) |
 | `tools/ud50new_extract.py IMAGE [OUT] [CYLS] [HEADS]` | K2 format → `*_payload.bin` + `*_records.csv` |
 | `tools/ud50k2_slot_extract.py IMAGE OUT_PREFIX` | K2 format by slot position, for images without `[K2]` gaps |
-| `tools/ud50new_build.py REF OUT.img --old IMG CSV [...]` | builds a K2-format image from old-format records; `--new IMG CSV --keep-timing` rebuilds a K2 image exactly |
-| `tools/ud50_systems.py PAYLOAD.bin OUT_DIR` | extracts the systems listed in sectors 2/3 of a SEMS system disk (BOS, RTS, …) |
-| `tools/ud50_strings.py PAYLOAD.bin [MIN_LEN] [OUT.txt]` | lists 7-bit/even-parity text strings with sector positions (sanity check) |
+| `tools/ud50new_build.py REF OUT.img --old IMG CSV [...]` | builds a K2-format image from old-format records; `--new IMG CSV --keep-timing` rebuilds a K2 image exactly || `tools/ud50_strings.py PAYLOAD.bin [MIN_LEN] [OUT.txt]` | lists 7-bit/even-parity text strings with sector positions (sanity check) |
 
 For old-format images use `END = 0x3700000`.
 
@@ -74,8 +72,6 @@ python tools/ud50new_extract.py DUPLIC_4_3_K1_FHD_new.img out    # round-trip ch
   the DUPLIC SYQUEST, DUPLIC MO and K1 images, plus string lists.
 * `results/new_format/` – K2 format: `*_records.csv.gz` and string lists for K2_MHD, S2_FHD, S2_MHD and HD00.
 * `results/conversion/` – record table of the converted DUPLIC image (K2 format).
-* `results/systems/` – system tables of S2_FHD, S2_MHD and K2_MHD. The system binaries themselves are not included.
-
 The DUPLIC string list was made with the first extractor, so its 20 sector-0 entries are placeholders.
 
 | image | format | sectors with valid CRC (of 194 880) |
@@ -111,9 +107,7 @@ The DUPLIC string list was made with the first extractor, so its 20 sector-0 ent
 
 ```
 docs/FORMAT.md            format description
-docs/SEMS_ASCII_TABLE.jpeg  SEMS ASCII code table (even parity), from the system documentation
-docs/Disk_geometry_1..3.jpeg  SEMS documentation 12.11: use of disk sectors 0-4
-tools/                    Python tools
+docs/SEMS_ASCII_TABLE.jpeg  SEMS ASCII code table (even parity), from the system documentationtools/                    Python tools
 results/                  per-sector tables and string lists (gzip)
 ```
 

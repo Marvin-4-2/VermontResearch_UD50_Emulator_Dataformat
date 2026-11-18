@@ -23,8 +23,8 @@ FHD = fixed-head disk, MHD = moving-head disk. Both use the same backup layout a
 The SEMS documentation gives **20 heads × 400 cylinders × 24 sectors** and **131 16-bit words per sector**
 (2 header words + 128 data words + 1 CRC word).
 
-The backups contain **406 cylinders per head** (0–405). Cylinders 400–405 are presumably spare or maintenance
-cylinders; in DUPLIC they contain only filler.
+The backups contain **406 cylinders per head** (0–405). Cylinders 400–405 are marked as defective in the system
+sector of the disks (see section 8); in DUPLIC they contain only filler.
 
 | | value |
 |---|---|
@@ -233,79 +233,16 @@ Not implemented yet. The host records can be extracted from K2 images with `ud50
 the old block layout (self addresses, per-block bit shift, extra word before sector 0, section fill, test pattern
 after 0x3700000) is still missing. Whether the older emulator accepts the shift 0 everywhere is unknown.
 
-## 8. SEMS disk file system (sectors 0–4)
+## 8. Contents of the disks
 
-Source: SEMS documentation, chapter 12.11 "Utilisation des supports disques" (`Disk_geometry_1..3.jpeg`).
+What is *on* the disks (SEMS SOLAR 16 disk layout, FMS file system, operating system, the DUPLIC test disk) is not
+part of the backup format. It is documented in the separate project **SEMS_SOLAR_16_65_Revival**, which is currently
+private. Only two facts from there matter here:
 
-**Sector numbering.** The documentation counts **logical** sectors: logical sector n is **physical sector n+1**
-(mod 24) on a track, so physical sector 0 is logical sector 23. Disk addresses count sectors **cylinder by
-cylinder across all 20 heads**:
-
-```
-disk address = cyl * 480 + head * 24 + logical sector
-```
-
-Sector 4 confirms this: "taille secteur" = 128 words and "taille cylindre" = 480 sectors (20 heads × 24). Note that the
-`*_payload.bin` files are ordered head by head. The cylinder-major order was checked at track boundaries: there, text
-and code continue in the cylinder-major successor 306 times and in the head-major one only 115 times.
-
-| logical sector | content |
-|---|---|
-| 0–2 | RAPD (bootstrap loader); sector 2 also holds the system table |
-| 3 | system information |
-| 4 | space table |
-
-**Sector 2:** word 0 RAPD start address, word 1 max. system number + 1, then for systems 0–7 four words each
-(words 2–33): memory address, start address, disk address, length in words. The RAPD program follows.
-
-**Sector 3:**
-
-| words | content |
-|---|---|
-| 0–7 | table of defective cylinders |
-| 8 | validation code |
-| 9–12 | label |
-| 13 | structure code |
-| 16+3k … 18+3k | file name of system k (k = 0–7) |
-| 64+2k / 65+2k | start / end disk address of system k |
-
-**Sector 4:**
-
-| words | content |
-|---|---|
-| 0–3 | label |
-| 4–6 | support code, sector size, cylinder size |
-| 7 / 8 | NBESP (number of spaces, high byte) / NBFMS |
-| 12+4k … 15+4k | space k (k = 0–27): indicator, LTAG, disk address, length |
-
-**Values in S2_FHD** (S2_MHD and K2_MHD are the same apart from names):
-* Defective-cylinder table `0190` = 400, so cylinders 400–405 are locked. This explains the 406 stored cylinders.
-* Validation code `89AB`, label `SRBFCC1`, structure code 2.
-* Support code 2, 128 words per sector, 480 sectors per cylinder, NBESP 6.
-* Spaces 2–5 have address/length 5/40, 47/260, 307/23 and 330/70, while spaces 0 and 1 are zero. Since the last one
-  ends exactly at 400, these values are apparently in cylinders; this is not confirmed.
-
-**Systems** (`tools/ud50_systems.py PAYLOAD OUT`; tables in `results/systems/`):
-
-| k | S2_FHD | S2_MHD / K2_MHD | memory | start | disk address | words |
-|---|---|---|---|---|---|---|
-| 0 | BOSDFH | BOSDMH | 0354 | 448A | 0x005–0x0FE | 31 916 |
-| 1 | RTSDFH | RTSDMH | 0140 | 56B3 | 0x1F4–0x3F0 | 65 089 |
-| 2 | RTSDFH | RTSDMH | 0140 | 4A19 | 0x3F1–0x5E4 | 19 687 |
-| 6 | BDFHWI | BOSDMH | 1255 / 106F | 44B5 / 44AE | 0x640–0x71B / 0x71F | 28 059 / 28 545 |
-| 7 | FORMAF | FORMAF | 1400 | 1620 | 0x12C–0x13F | 2 556 |
-
-Sectors 2 and 3 agree on all disk addresses. The contents fit the names:
-* BOS contains `** RECHNER S2 FHD **` and `BETRIEBSSYSTEME: BOSDFH V9.7 UND RTS…`.
-* RTS is the real-time system.
-* FORMAF is the formatter (`REPRISE SUR DEFAUT SECTEUR`, `PERIPH. BOOTSTRAPABLE (Y-N)`).
-
-FORMAF is identical in all three images, and BOSDFH and BOSDMH agree in 95 % of their bytes.
-
-**The DUPLIC disk does not use this structure.** In HD00, logical sectors 1 and 3 are unwritten (fill pattern), and
-logical sector 4 already contains DUPLIC text (`FICHIER BOOTSTRAP + MONITEUR`). It is a stand-alone bootable test
-disk, not a file-system volume, so it has no directory. Logical sector 2 has `0880` in word 0 and `00AC` (= 172) in
-word 1; 172 matches the last used cylinder.
+* The SEMS numbers sectors **logically**: logical sector n is physical sector n+1. The fill pattern in HD00
+  (`cyl·0x40 + (sector − 1) mod 24`) is therefore each sector's own logical address.
+* Cylinders 400–405 are marked as defective in the system sector of the disks. This explains why 406 cylinders are
+  stored while 400 are documented.
 
 ## 9. History: a misread of the new format
 
