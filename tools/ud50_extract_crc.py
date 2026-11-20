@@ -164,7 +164,47 @@ def main():
         if best:
             found[i], status[i] = best
 
-    name = os.path.splitext(os.path.basename(img))[0]
+    # pass 3: sectors still missing or BADCRC. Some records start a few bytes away from the
+    # usual place (no self address in front, e.g. 5 bytes earlier), so passes 1/2 miss them.
+    # Search bit by bit in a window around the expected place for a record whose header is
+    # exactly the expected one AND whose CRC matches (status SHIFTED). Runs forwards and
+    # backwards so that runs of such sectors are found one after the other.
+    def scan(i, lo, hi):
+        head, r = divmod(i, cyls * SECS)
+        cyl, sec = divmod(r, SECS)
+        exp0 = sec | (head & 1) << 5 | cyl << 6 | (head >> 4) << 15
+        lo = max(lo, 0)
+        seg = raw[lo:hi + 270]
+        if len(seg) < 270:
+            return None
+        v = int.from_bytes(seg, 'little')
+        for bit in range(0, (hi - lo) * 8):
+            if (v >> bit) & 0xFFFF != exp0 or (v >> (bit + 16)) & 7 != (head >> 1) & 7:
+                continue
+            b = ((v >> bit) & ((1 << 2096) - 1)).to_bytes(262, 'little')
+            msg, chk = b[:260], int.from_bytes(b[260:262], 'little')
+            if crc16_arc(msg) != chk:
+                continue
+            ab = lo * 8 + bit - 4                  # bit position of the (assumed) sync nibble
+            o, s = ab // 8 - 30, ab % 8
+            data = np.frombuffer(msg[4:], dtype='<u2').astype('>u2').tobytes()
+            w1 = int.from_bytes(msg[2:4], 'little')
+            return (o, s, data, f'{exp0:04x}', f'{w1:04x}', f'{chk:04x}')
+        return None
+
+    for order in (range(n), range(n - 1, -1, -1)):
+        for i in order:
+            if i in found and status[i] != 'BADCRC':
+                continue
+            for j, sign in ((i - 1, 1), (i + 1, -1)):
+                if j in found and status.get(j) != 'BADCRC':
+                    c = found[j][0] + sign * 289
+                    e = scan(i, c - 48, c + 48)
+                    if e:
+                        found[i], status[i] = e, 'SHIFTED'
+                        break
+
+    name =os.path.splitext(os.path.basename(img))[0]
     os.makedirs(out, exist_ok=True)
     missing = 0
     with open(os.path.join(out, name + '_payload.bin'), 'wb') as fp, \

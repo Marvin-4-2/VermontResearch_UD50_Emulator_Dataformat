@@ -150,7 +150,11 @@ neither `[K2]` nor any old-format blocks.
 2. For each candidate, the shift `s` (0–15) is chosen where the sync nibble is 8 **and** CRC-16/ARC is valid.
 3. The sector is placed by its header words (head/cylinder/sector), **not** by its position in the image.
 4. A second pass looks for blocks without a self address 288/290 bytes next to an already found neighbour.
-5. Status per sector in `*_blocks.csv`:
+5. A third pass searches bit by bit within ±48 bytes of the expected place (289 bytes from a found neighbour,
+   forwards and backwards, so whole runs are found). It accepts a record only if its header words are exactly the
+   expected ones **and** the CRC is valid. Such records start a few bytes away from the usual place (e.g. 5 bytes
+   earlier, without self address); passes 1/2 miss them.
+6. Status per sector in `*_blocks.csv`:
 
 | status | meaning |
 |---|---|
@@ -158,6 +162,7 @@ neither `[K2]` nor any old-format blocks.
 | `HDRBIT` | one flipped bit in header word 1; CRC valid after correcting it (data confirmed) |
 | `CRCBIT` | the stored CRC differs from the computed one in exactly one bit |
 | `BADCRC` | expected header found, CRC wrong (data unverified) |
+| `SHIFTED` | CRC valid, record found by pass 3 at an unusual position |
 | `STRAY` | valid record found outside its head's section |
 | `MISSING` | not in the image; filled with `**MISSING SECTOR**` |
 
@@ -182,9 +187,13 @@ zeros, the **unchanged host bit stream** (nibble + 2096 bits) at bit 245 (`--nib
 
 | image | format | valid CRC | special | missing |
 |---|---|---|---|---|
-| DUPLIC_4_3_K1_FHD_SYQUEST.img | old | 194 877 | 1 HDRBIT, 1 CRCBIT | 1 |
-| Duplic_4_3_K1_MO_FHD.img | old | 194 877 | 1 HDRBIT, 1 BADCRC | 1 |
-| K1_MHD_SYQUEST.img | old | 193 176 | 1 STRAY, 1 BADCRC | 1 702 |
+| DUPLIC_4_3_K1_FHD_SYQUEST.img | old | 194 878 | 1 HDRBIT, 1 CRCBIT, 1 SHIFTED | 0 |
+| Duplic_4_3_K1_MO_FHD.img | old | 194 878 | 1 HDRBIT, 1 BADCRC, 1 SHIFTED | 0 |
+| K1_MHD_SYQUEST.img | old | 194 590 | 1 STRAY, 1 BADCRC, 1 414 SHIFTED | 288 |
+| UR_FHD_20081222.img | old | 194 871 | 10 STRAY, 9 BADCRC, 6 418 SHIFTED | 0 |
+| UR_FHD_20080512.img | old | 194 871 | 10 STRAY, 9 BADCRC, 6 421 SHIFTED | 0 |
+| UR_MHD_20081222.img | old | 194 592 | 1 414 SHIFTED | 288 |
+| UR_MHD_20080512.img | old | 194 592 | 1 414 SHIFTED | 288 |
 | K2_MHD.hda (first 64 MiB) | new | 194 880 | – | 0 |
 | S2_FHD_070208.img | new | 194 880 | – | 0 |
 | S2_MHD_irgendwas.img | new | 194 880 | – | 0 |
@@ -195,7 +204,10 @@ zeros, the **unchanged host bit stream** (nibble + 2096 bits) at bit 245 (`--nib
   * SYQUEST has one flipped CRC bit (head 1/cyl 81/sec 3); MO is correct there.
   * MO loses 5 bits exactly at its 32 MiB boundary (head 11/cyl 265/sec 9); SYQUEST is correct there.
   * Both share one flipped header bit (head 19/cyl 179/sec 5, `ade5` instead of `ace5`; filler data).
-  * Both lack head 0/cyl 0/sec 0.
+  * Head 0/cyl 0/sec 0 sits at the very start of the file (found by pass 3).
+* **Old-format MHDs (K1, UR):** the 288 missing sectors are heads 18/19, cylinders 400–405, i.e. the locked
+  defective cylinders (sector 3 of the SEMS disks: cylinders ≥ 400 unused). Until pass 3 existed, 1 702 sectors
+  were reported missing; the UR_FHD gaps (6 418, including the system table) were likewise all pass-3 records.
 * **K1:** the first track of head 0 is overwritten at the start of the file. Heads 18 and 19 end at cylinder 370 in this
   backup.
 * **New-format images:** all three rebuild byte-identically with `ud50new_build.py --new … --keep-timing`.
